@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-labelledby="title"
+aria-describedby="desc" role="img" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title>Bluetooth</title>
+  <desc>A flat styled icon from Orion Icon Library.</desc>
+  <path data-name="layer1"
+  d="M32 63a3 3 0 0 1-3-3V4a3 3 0 0 1 6 0v56a3 3 0 0 1-3 3z" fill="#c3d6f9"></path>
+  <path data-name="layer1" d="M47 22a2.99 2.99 0 0 1-2.121-.879l-15-15a3 3 0 0 1 4.242-4.243l15 15A3 3 0 0 1 47 22zm0 27a2.99 2.99 0 0 1-2.084-.843l-30-29a3 3 0 0 1 4.17-4.314l30 29A3 3 0 0 1 47 49z"
+  fill="#c3d6f9"></path>
+  <path data-name="layer1" d="M32 63a3 3 0 0 1-2.047-5.193l15-14a3 3 0 1 1 4.094 4.386l-15 14A2.989 2.989 0 0 1 32 63zM17 51a3 3 0 0 1-2.085-5.157l30-29a3 3 0 0 1 4.17 4.314l-30 29A2.99 2.99 0 0 1 17 51z"
+  fill="#c3d6f9"></path>
+</svg>
