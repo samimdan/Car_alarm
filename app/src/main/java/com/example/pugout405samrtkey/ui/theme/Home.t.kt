@@ -83,6 +83,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.example.pugout405samrtkey.BleAdvertisingService
+import com.example.pugout405samrtkey.Esp32Telemetry
 
 private val Midnight = Color(0xFF070D19)
 private val Panel = Color(0xFF0D192A)
@@ -157,6 +158,8 @@ fun CarAlarmScreen(
     )
     val esp32Rssi by BleAdvertisingService
         .esp32Rssi.collectAsState(initial = null)
+    val telemetry by BleAdvertisingService
+        .telemetry.collectAsState(initial = null)
 
     LaunchedEffect(esp32Rssi, esp32Connected) {
         android.util.Log.d(
@@ -416,9 +419,26 @@ fun CarAlarmScreen(
                                 .padding(start = 12.dp),
                         ) {
                             Text(
-                                text = "Connected: $esp32Connected | RSSI: ${esp32Rssi ?: "NULL"}",
+                                text = "Connected: $esp32Connected | Phone RSSI: ${telemetry?.phoneRssiDbm?.let { "$it dBm" } ?: "waiting"}",
                                 color = Bright,
                                 fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Lock: ${
+                                    when (telemetry?.lockState) {
+                                        Esp32Telemetry.LockState.LOCKED -> "Locked"
+                                        Esp32Telemetry.LockState.UNLOCKED -> "Unlocked"
+                                        else -> "Unknown"
+                                    }
+                                } | Alarm: ${
+                                    when {
+                                        telemetry == null -> "Unknown"
+                                        telemetry?.alarmPending == true -> "Pending"
+                                        else -> "Clear"
+                                    }
+                                }",
+                                color = Bright,
+                                fontSize = 12.sp
                             )
                         }
 

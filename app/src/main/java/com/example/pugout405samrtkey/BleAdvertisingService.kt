@@ -43,6 +43,18 @@ import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+data class Esp32Telemetry(
+    val phoneRssiDbm: Int,
+    val lockState: LockState,
+    val alarmPending: Boolean
+) {
+    enum class LockState {
+        UNKNOWN,
+        LOCKED,
+        UNLOCKED
+    }
+}
+
 class BleAdvertisingService : Service() {
 
     companion object {
@@ -86,6 +98,9 @@ class BleAdvertisingService : Service() {
         private val COMMAND_UUID =
             UUID.fromString("12345678-1234-1234-1234-123456789014")
 
+        private val STATUS_UUID =
+            UUID.fromString("12345678-1234-1234-1234-123456789016")
+
         private val commandLock = Any()
 
         @Volatile
@@ -114,6 +129,9 @@ class BleAdvertisingService : Service() {
 
         private val _esp32Rssi = MutableStateFlow<Int?>(null)
         val esp32Rssi: StateFlow<Int?> = _esp32Rssi
+
+        private val _telemetry = MutableStateFlow<Esp32Telemetry?>(null)
+        val telemetry: StateFlow<Esp32Telemetry?> = _telemetry
     }
 
     private var bluetoothManager: BluetoothManager? = null
@@ -133,6 +151,7 @@ class BleAdvertisingService : Service() {
     private var bluetoothReceiverRegistered = false
     private var authCharacteristic: BluetoothGattCharacteristic? = null
     private var commandCharacteristic: BluetoothGattCharacteristic? = null
+    private var statusCharacteristic: BluetoothGattCharacteristic? = null
 
     private val challengeByDevice =
         java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
@@ -434,6 +453,13 @@ class BleAdvertisingService : Service() {
                     BluetoothGattCharacteristic.PERMISSION_READ
                 )
 
+            statusCharacteristic =
+                BluetoothGattCharacteristic(
+                    STATUS_UUID,
+                    BluetoothGattCharacteristic.PROPERTY_WRITE,
+                    BluetoothGattCharacteristic.PERMISSION_WRITE
+                )
+
             val challengeAdded =
                 service.addCharacteristic(challengeCharacteristic!!)
 
@@ -447,6 +473,9 @@ class BleAdvertisingService : Service() {
 
             val commandAdded =
                 service.addCharacteristic(commandCharacteristic!!)
+
+            val statusAdded =
+                service.addCharacteristic(statusCharacteristic!!)
 
             Log.d(TAG, "Challenge added: $challengeAdded")
             Log.d(TAG, "Response added: $responseAdded")
@@ -463,7 +492,8 @@ class BleAdvertisingService : Service() {
                 !alarmAdded ||
                 !authAdded ||
                 !commandAdded ||
-                service.characteristics.size != 5
+                !statusAdded ||
+                service.characteristics.size != 6
             ) {
 
                 Log.e(TAG, "Characteristic registration failed")
@@ -539,6 +569,8 @@ class BleAdvertisingService : Service() {
                         challengeByDevice.remove(device.address)
                         responseByDevice.remove(device.address)
                         authenticatedChallengeByDevice.remove(device.address)
+                        _esp32Rssi.value = null
+                        _telemetry.value = null
                         Log.d(TAG, "BLE client disconnected")
                         // Update the connection state
                         _isEsp32Connected.value = false
@@ -566,7 +598,7 @@ class BleAdvertisingService : Service() {
                 if (
                     status == BluetoothGatt.GATT_SUCCESS &&
                     service.uuid == SERVICE_UUID &&
-                    service.characteristics.size == 5
+                    service.characteristics.size == 6
                 ) {
 
                     Log.d(TAG, "GATT service registered successfully")
@@ -613,6 +645,76 @@ class BleAdvertisingService : Service() {
 
                     Log.e(TAG, "Bluetooth connect permission missing")
 
+                    return
+                }
+
+                if (characteristic.uuid == STATUS_UUID) {
+                    val challenge = authenticatedChallengeByDevice[device.address]
+                    try {
+                        if (
+                            preparedWrite ||
+                            offset != 0 ||
+                            value.size != 15 ||
+                            challenge == null
+                        ) {
+                            throw SecurityException("Invalid or unauthenticated status packet")
+                        }
+
+                        val payload = value.copyOfRange(0, 3)
+                        val signedData =
+                            challenge +
+                                    "STATUS".toByteArray(Charsets.US_ASCII) +
+                                    payload
+                        val expectedSignature =
+                            calculateHmac(signedData).copyOfRange(0, 12)
+                        val receivedSignature = value.copyOfRange(3, 15)
+
+                        if (!MessageDigest.isEqual(expectedSignature, receivedSignature)) {
+                            throw SecurityException("Invalid status signature")
+                        }
+
+                        val lockState = when (payload[1].toInt()) {
+                            0 -> Esp32Telemetry.LockState.UNKNOWN
+                            1 -> Esp32Telemetry.LockState.LOCKED
+                            2 -> Esp32Telemetry.LockState.UNLOCKED
+                            else -> throw IllegalArgumentException("Invalid lock state")
+                        }
+                        val alarmPending = when (payload[2].toInt()) {
+                            0 -> false
+                            1 -> true
+                            else -> throw IllegalArgumentException("Invalid alarm state")
+                        }
+                        val phoneRssiDbm = payload[0].toInt()
+
+                        _esp32Rssi.value = phoneRssiDbm
+                        _telemetry.value = Esp32Telemetry(
+                            phoneRssiDbm = phoneRssiDbm,
+                            lockState = lockState,
+                            alarmPending = alarmPending
+                        )
+
+                        if (responseNeeded) {
+                            sendGattResponse(
+                                device,
+                                requestId,
+                                BluetoothGatt.GATT_SUCCESS,
+                                0,
+                                null
+                            )
+                        }
+                        Log.i(TAG, "Authenticated ESP32 status received")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "ESP32 status rejected", e)
+                        if (responseNeeded) {
+                            sendGattResponse(
+                                device,
+                                requestId,
+                                BluetoothGatt.GATT_FAILURE,
+                                0,
+                                null
+                            )
+                        }
+                    }
                     return
                 }
 
