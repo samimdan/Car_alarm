@@ -68,7 +68,16 @@ class MainActivity : ComponentActivity() {
 
         requestBluetoothPermissions()
         requestFullScreenAccess()
+val challenge = "EED7A0DBF76F770F4A75590FBD9499A3"
+    .chunked(2)
+    .map { it.toInt(16).toByte() }
+    .toByteArray()
 
+        val result = SecurityManager.calculateHMAC(challenge)
+        Log.d(
+            "HMAC_TEST",
+            SecurityManager.toHex(result)
+        )
         setContent {
             CarAlarmScreen(
                 Bluethooth = false,
